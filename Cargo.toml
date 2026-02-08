@@ -1,7 +1,9 @@
 [package]
 name = "arm-cortex-m0-simulator"
 version = "0.1.0"
-authors = ["Henry Shin <bg@22915@bristol.ac.uk>"]
-edition = "2024"
+authors = ["Henry Shin <bg22915@bristol.ac.uk>"]
+edition = "2021"
 
+# No external dependencies - all parsing, simulation, and analysis
+# is implemented from scratch using only the Rust standard library.
 [dependencies]
