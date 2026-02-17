@@ -26,14 +26,14 @@ pub fn run(
 
         let instr = &program[pc];
 
-        // -- Fetch (1 cycle) --
+        // Fetch (1 cycle)
         stats.cycles += 1;
         stats.instructions_fetched += 1;
 
-        // -- Decode (1 cycle) --
+        // Decode (1 cycle)
         stats.cycles += 1;
 
-        // -- Execute (latency cycles) --
+        // Execute (latency cycles)
         let latency = instr.opcode.latency();
         stats.cycles += latency as u64;
 

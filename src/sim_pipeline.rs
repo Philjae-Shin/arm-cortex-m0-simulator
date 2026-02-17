@@ -94,7 +94,7 @@ pub fn run(
         }
         wb_slot.flush();
 
-        // ===== MEM → WB =====
+        // ===== MEM -> WB =====
         wb_slot = mem_slot.clone();
         mem_slot.flush();
 
@@ -192,7 +192,7 @@ pub fn run(
             // wb_slot: values always available via eff_regs (no stall needed)
         }
 
-        // ===== ID → EX (issue) =====
+        // ===== ID -> EX (issue) =====
         if !stall_fetch_decode {
             if let Some(ref instr) = decode_slot.instr {
                 let mut issued = false;
