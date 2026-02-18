@@ -1,13 +1,7 @@
-ARM Cortex-M0 Superscalar Processor Simulator
-==============================================
-Author:  Henry Shin (bg22915@bristol.ac.uk)
-Course:  COMS30046 - Advanced Computer Architecture
-Date:    February 2026
-
 Overview
 --------
 A cycle-accurate simulator for an ARM Cortex-M0 Thumb instruction subset,
-implemented entirely in Rust with zero external dependencies.
+implemented entirely in Rust.
 
 Three simulation modes are supported:
   1. Scalar      - Non-pipelined, single-issue (fetch-decode-execute)
@@ -24,8 +18,6 @@ Build
   make                     (uses the included Makefile)
   or:
   cargo build --release    (directly with cargo)
-
-The binary is produced at: target/release/arm-cortex-m0-simulator
 
 Run
 ---
