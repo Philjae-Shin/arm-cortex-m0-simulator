@@ -18,9 +18,9 @@
 
 gcd_loop:
     CMP   R0, R1
-    BEQ   gcd_done          ; a == b → done
+    BEQ   gcd_done          ; a == b (done)
 
-    BGT   a_bigger          ; a > b → subtract b from a
+    BGT   a_bigger          ; a > b (subtract b from a)
 
     ; else: b > a → b = b - a
     SUB   R1, R1, R0

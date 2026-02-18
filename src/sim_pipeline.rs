@@ -42,10 +42,6 @@ impl PipeSlot {
     fn flush(&mut self) { *self = PipeSlot::empty(); }
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 pub fn run(
     program: &[Instruction],
     regs: &mut RegFile,
@@ -94,11 +90,11 @@ pub fn run(
         }
         wb_slot.flush();
 
-        // ===== MEM -> WB =====
+        // MEM -> WB
         wb_slot = mem_slot.clone();
         mem_slot.flush();
 
-        // ===== EX Stage: advance execution units, move completed to MEM =====
+        // EX Stage: advance execution units, move completed to MEM
         // Enforce in-order retirement: among all completed instructions,
         // select the one with the smallest sequence number (oldest first).
         // This prevents out-of-order completion from corrupting eff_regs
@@ -122,7 +118,7 @@ pub fn run(
             exec_slots[idx].flush();
         }
 
-        // ===== Build effective register file =====
+        // Build effective register file
         // Always include wb_slot values (models standard WB-write-first convention
         // where register file write happens before read in the same cycle).
         let mut eff_regs = regs.clone();
@@ -147,7 +143,7 @@ pub fn run(
             }
         }
 
-        // ===== Detect data hazards (between decode_slot and in-flight instrs) =====
+        // Detect data hazards (between decode_slot and in-flight instrs)
         let mut stall_fetch_decode = false;
         if let Some(ref dec_instr) = decode_slot.instr {
             let sources = dec_instr.sources();
@@ -192,7 +188,7 @@ pub fn run(
             // wb_slot: values always available via eff_regs (no stall needed)
         }
 
-        // ===== ID -> EX (issue) =====
+        // ID -> EX (issue)
         if !stall_fetch_decode {
             if let Some(ref instr) = decode_slot.instr {
                 let mut issued = false;
@@ -254,13 +250,13 @@ pub fn run(
             stats.pipeline_stalls += 1;
         }
 
-        // ===== IF → ID =====
+        // IF -> ID
         if !stall_fetch_decode && decode_slot.is_empty() {
             decode_slot = fetch_slot.clone();
             fetch_slot.flush();
         }
 
-        // ===== Fetch =====
+        // Fetch
         if !stall_fetch_decode && fetch_slot.is_empty() {
             if pc < program.len() {
                 let instr = program[pc].clone();

@@ -80,13 +80,13 @@ fn main() {
             branch_pred::PredictorKind::Static
         });
 
-    // ---------- Experiment mode ----------
+    // Experiment mode
     if experiment {
         run_experiments(pred_kind, verbose);
         return;
     }
 
-    // ---------- Single-program / Batch mode ----------
+    // Single-program / Batch mode
     let path = program_path.unwrap_or_else(|| {
         eprintln!("Error: no program file specified.");
         print_usage();
@@ -241,7 +241,7 @@ fn run_experiments(
         process::exit(1);
     }
 
-    println!("===== EXPERIMENT SUITE — ACA Processor Simulator =====\n");
+    println!("=== EXPERIMENT SUITE — ACA Processor Simulator ===\n");
 
     // Experiment 1: Pipelining benefit
     println!("=== Experiment 1: Pipeline Speedup over Scalar ===\n");
@@ -367,10 +367,7 @@ fn run_fresh(
     Some(result)
 }
 
-// ---------------------------------------------------------------------------
-// Help
-// ---------------------------------------------------------------------------
-
+// --help
 fn print_usage() {
     eprintln!("ARM Cortex-M0 Processor Simulator");
     eprintln!("Usage: cargo run -- [OPTIONS] <program.asm>");

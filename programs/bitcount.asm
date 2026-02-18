@@ -17,7 +17,7 @@
     MOVI  R0, #0x5555       ; val = 0x55555555 (16 bits set in lower half)
     ; To set upper bits, use shift and OR:
     LSL   R4, R0, #16       ; R4 = 0x55550000
-    ORR   R0, R0, R4        ; R0 = 0x55555555  → 16 bits set
+    ORR   R0, R0, R4        ; R0 = 0x55555555  (16 bits set)
 
     MOVI  R1, #0            ; count = 0
     MOVI  R3, #1            ; constant 1

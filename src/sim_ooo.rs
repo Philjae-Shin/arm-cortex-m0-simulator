@@ -150,9 +150,7 @@ pub fn run(
     while !halted {
         stats.cycles += 1;
 
-        // ===================================================================
         // 1. RETIRE — commit oldest ROB entries that are complete (in order)
-        // ===================================================================
         let mut retire_limit = fetch_width;
         while retire_limit > 0 && !rob.is_empty() {
             let front_complete = rob.front()
@@ -194,13 +192,11 @@ pub fn run(
 
         if halted { break; }
 
-        // ===================================================================
         // 2. COMPLETE — collect finished RS entries, execute, broadcast CDB
         //
         // Two-pass design to avoid double-mutable-borrow on rs_pool:
         //   Pass 1: identify completed entries and extract their data
         //   Pass 2: execute, forward results, and free RS slots
-        // ===================================================================
 
         // Pass 1: gather completed RS entries (immutable iteration)
         let mut completed: Vec<CompletedEntry> = Vec::new();
@@ -350,9 +346,7 @@ pub fn run(
             rs_pool[ce.rs_idx] = None;
         }
 
-        // ===================================================================
         // 3. EXECUTE — tick down remaining cycles for executing RS entries
-        // ===================================================================
         for rs_entry in rs_pool.iter_mut() {
             if let Some(ref mut entry) = rs_entry {
                 if entry.executing && entry.remaining_cycles > 0 {
@@ -361,9 +355,7 @@ pub fn run(
             }
         }
 
-        // ===================================================================
         // 4. ISSUE — pick ready RS entries and start executing
-        // ===================================================================
         for rs_entry in rs_pool.iter_mut() {
             if let Some(ref mut entry) = rs_entry {
                 if !entry.executing && entry.all_sources_ready() {
@@ -380,10 +372,8 @@ pub fn run(
             }
         }
 
-        // ===================================================================
         // 5. DECODE / RENAME — take instructions from fetch buffer,
         //    allocate ROB + RS, perform register renaming
-        // ===================================================================
         let mut dispatched = 0;
         while dispatched < fetch_width && !fetch_buf.is_empty() {
             // Check ROB capacity
@@ -495,9 +485,7 @@ pub fn run(
             dispatched += 1;
         }
 
-        // ===================================================================
         // 6. FETCH — fetch up to N instructions into fetch buffer
-        // ===================================================================
         for _ in 0..fetch_width {
             if fetch_buf.len() >= fetch_width * 2 { break; }
             if pc >= program.len() { break; }

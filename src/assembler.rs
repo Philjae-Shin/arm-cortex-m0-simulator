@@ -22,10 +22,6 @@ pub struct Program {
     pub name: String,
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /// Assemble `source` text into a program image, optionally pre-loading data
 /// into `mem`.
 pub fn assemble(source: &str, mem: &mut Memory) -> Result<Program, String> {

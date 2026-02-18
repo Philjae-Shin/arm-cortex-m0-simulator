@@ -16,7 +16,7 @@
     MOV   R10, R0           ; save result
     HALT
 
-; ---- factorial(n) ----
+; factorial(n)
 ; Input:  R0 = n
 ; Output: R0 = n!
 factorial:

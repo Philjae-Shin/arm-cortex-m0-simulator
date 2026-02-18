@@ -1,5 +1,3 @@
-/// Branch prediction strategies.
-///
 /// Implements three common predictors:
 ///   1. **Static (always not-taken)** — baseline
 ///   2. **OneBit** — 1-bit saturating, flips on every misprediction
