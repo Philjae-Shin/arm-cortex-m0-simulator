@@ -59,8 +59,6 @@ pub fn eval_condition(cond: Cond, regs: &RegFile) -> bool {
         Cond::GE => regs.flag_n() == regs.flag_v(),
         Cond::GT => !regs.flag_z() && (regs.flag_n() == regs.flag_v()),
         Cond::LE => regs.flag_z() || (regs.flag_n() != regs.flag_v()),
-        Cond::HI => regs.flag_c() && !regs.flag_z(),
-        Cond::LS => !regs.flag_c() || regs.flag_z(),
     }
 }
 

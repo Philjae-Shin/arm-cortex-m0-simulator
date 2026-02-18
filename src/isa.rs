@@ -1,6 +1,6 @@
-/// Instruction Set Architecture definition for a reduced ARM Thumb-like processor.
+/// ISA definition for a reduced ARM Thumb-like processor.
 ///
-/// This module defines all supported opcodes, operand types, condition codes,
+/// Defines all supported opcodes, operand types, condition codes,
 /// and the core `Instruction` representation used throughout the simulator.
 
 use std::fmt;
@@ -40,8 +40,6 @@ pub enum Cond {
     GE,  // Signed >=       (N == V)
     GT,  // Signed >        (Z == 0 && N == V)
     LE,  // Signed <=       (Z == 1 || N != V)
-    HI,  // Unsigned >      (C == 1 && Z == 0)
-    LS,  // Unsigned <=     (C == 0 || Z == 1)
 }
 
 impl fmt::Display for Cond {
@@ -54,8 +52,6 @@ impl fmt::Display for Cond {
             Cond::GE => write!(f, "GE"),
             Cond::GT => write!(f, "GT"),
             Cond::LE => write!(f, "LE"),
-            Cond::HI => write!(f, "HI"),
-            Cond::LS => write!(f, "LS"),
         }
     }
 }
@@ -119,22 +115,6 @@ pub enum Opcode {
 }
 
 impl Opcode {
-    /// Classify instruction into a functional-unit category.
-    pub fn unit_kind(&self) -> UnitKind {
-        match self {
-            Opcode::Ldr | Opcode::Str | Opcode::LdrB | Opcode::StrB
-            | Opcode::Push | Opcode::Pop => UnitKind::LoadStore,
-
-            Opcode::B | Opcode::Beq | Opcode::Bne | Opcode::Blt
-            | Opcode::Bge | Opcode::Bgt | Opcode::Ble
-            | Opcode::Bl | Opcode::Bx => UnitKind::Branch,
-
-            Opcode::Nop | Opcode::Halt => UnitKind::Alu,
-
-            _ => UnitKind::Alu,
-        }
-    }
-
     /// Whether this opcode is a branch / jump.
     pub fn is_branch(&self) -> bool {
         matches!(
@@ -213,17 +193,6 @@ impl fmt::Display for Opcode {
         };
         write!(f, "{}", s)
     }
-}
-
-// ---------------------------------------------------------------------------
-// Execution unit categories
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnitKind {
-    Alu,
-    LoadStore,
-    Branch,
 }
 
 // ---------------------------------------------------------------------------

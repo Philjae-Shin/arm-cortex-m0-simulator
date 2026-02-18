@@ -1,5 +1,5 @@
-# ARM Cortex-M0 Superscalar Processor Simulator
 # Requires: Rust toolchain (cargo + rustc), install from https://rustup.rs
+# Check: rustc --version, cargo --version
 
 .PHONY: all build run clean experiment
 
