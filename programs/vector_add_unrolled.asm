@@ -1,4 +1,4 @@
-; vector_add_unrolled.asm — Unrolled Vector Addition (4x unrolling)
+; vector_add_unrolled.asm — Unrolled Vector Addition (2x unrolling)
 ; Computes C[i] = A[i] + B[i] for i = 0..7 with 2x loop unrolling.
 ; Tests: ILP benefits, reduced branch overhead, superscalar utilisation
 ;

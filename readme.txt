@@ -10,7 +10,7 @@ A cycle-accurate simulator for an ARM Cortex-M0 Thumb instruction subset,
 implemented entirely in Rust with zero external dependencies.
 
 Three simulation modes are supported:
-  1. Scalar      - Non-pipelined, single-issue (4 stages)
+  1. Scalar      - Non-pipelined, single-issue (fetch-decode-execute)
   2. Pipeline    - In-order, 5-stage (IF-ID-EX-MEM-WB) with multiple EX units
   3. OoO         - Out-of-order with Tomasulo algorithm, ROB, and register renaming
 
@@ -21,7 +21,9 @@ Prerequisites
 
 Build
 -----
-  cargo build --release
+  make                     (uses the included Makefile)
+  or:
+  cargo build --release    (directly with cargo)
 
 The binary is produced at: target/release/arm-cortex-m0-simulator
 
@@ -56,7 +58,7 @@ Project Structure
 -----------------
   src/
     main.rs          CLI, argument parsing, experiment runner
-    isa.rs           Instruction set definition (30 ARM Thumb opcodes)
+    isa.rs           Instruction set definition (33 ARM Thumb opcodes)
     assembler.rs     Two-pass assembler (labels, pseudo-instructions)
     memory.rs        Byte-addressable memory model
     regs.rs          Register file (R0-R12, SP, LR, PC, CPSR)
@@ -70,7 +72,7 @@ Project Structure
   programs/
     gcd.asm                Euclidean GCD algorithm
     fibonacci.asm          Fibonacci sequence computation
-    factorial.asm          Iterative factorial
+    factorial.asm          Recursive factorial
     bitcount.asm           Population count (bit counting)
     vector_add.asm         Vector addition (10 elements)
     vector_add_unrolled.asm  Loop-unrolled vector addition
@@ -78,7 +80,7 @@ Project Structure
 
 Key Features
 ------------
-  - Full ARM Cortex-M0 Thumb subset: 30 opcodes (arithmetic, memory, control flow)
+  - Full ARM Cortex-M0 Thumb subset: 33 opcodes (arithmetic, memory, control flow)
   - Custom two-pass assembler with label resolution and pseudo-instruction support
   - 5-stage pipeline with hazard detection (RAW data + CPSR flag hazards)
   - Sequence-number based in-order retirement for pipeline correctness
