@@ -329,6 +329,26 @@ fn run_experiments(
         }
     }
 
+    // Experiment 5: Data forwarding impact
+    println!("\n=== Experiment 5: Data Forwarding Impact ===\n");
+    println!("{:<25} {:>12} {:>12} {:>10}",
+        "Program", "No Fwd", "Fwd", "Reduction");
+    println!("{}", "-".repeat(62));
+
+    for path in &asm_files {
+        let name = std::path::Path::new(path).file_stem()
+            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+
+        let s_no_fwd = run_fresh(path, "pipeline", 2, branch_pred::PredictorKind::TwoBit, false, verbose);
+        let s_fwd    = run_fresh(path, "pipeline", 2, branch_pred::PredictorKind::TwoBit, true, verbose);
+
+        if let (Some(nf), Some(fw)) = (s_no_fwd, s_fwd) {
+            let reduction = (1.0 - fw.cycles as f64 / nf.cycles as f64) * 100.0;
+            println!("{:<25} {:>12} {:>12} {:>9.1}%",
+                name, nf.cycles, fw.cycles, reduction);
+        }
+    }
+
     println!("\n[Experiments complete]");
 }
 
