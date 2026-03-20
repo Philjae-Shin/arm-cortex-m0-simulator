@@ -34,7 +34,7 @@ pub fn run(
         stats.cycles += 1;
 
         // Execute (latency cycles)
-        let latency = instr.opcode.latency();
+        let latency = instr.effective_latency();
         stats.cycles += latency as u64;
 
         let result = exec(instr, regs, mem);

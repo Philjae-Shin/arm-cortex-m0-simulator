@@ -17,6 +17,7 @@ mod regs;
 mod execute;
 mod stats;
 mod branch_pred;
+mod cache;
 mod sim_scalar;
 mod sim_pipeline;
 mod sim_ooo;
@@ -41,6 +42,7 @@ fn main() {
     let mut verbose = false;
     let mut batch = false;
     let mut experiment = false;
+    let mut use_cache = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -60,6 +62,7 @@ fn main() {
                 if i < args.len() { pred_kind_str = args[i].clone(); }
             }
             "--forwarding" => { forwarding = true; }
+            "--cache" => { use_cache = true; }
             "--verbose" | "-v" => { verbose = true; }
             "--batch" => { batch = true; }
             "--experiment" => { experiment = true; }
@@ -96,7 +99,7 @@ fn main() {
     if batch {
         run_batch(&path, num_units, pred_kind, forwarding, verbose);
     } else {
-        run_single(&path, &sim_mode, num_units, pred_kind, forwarding, verbose);
+        run_single(&path, &sim_mode, num_units, pred_kind, forwarding, verbose, use_cache);
     }
 }
 
@@ -111,6 +114,7 @@ fn run_single(
     pred_kind: branch_pred::PredictorKind,
     forwarding: bool,
     verbose: bool,
+    use_cache: bool,
 ) {
     let mut mem = memory::Memory::new();
     let program = assembler::load_from_file(path, &mut mem).unwrap_or_else(|e| {
@@ -124,20 +128,22 @@ fn run_single(
         println!("Exec units: {}", num_units);
         println!("Predictor : {}", pred_kind.name());
         if forwarding { println!("Forwarding: enabled"); }
+        if use_cache { println!("L1 Cache  : enabled (256-line direct-mapped)"); }
     }
     println!("---");
 
     let mut regs = regs::RegFile::new(0xFFFC);
+    let cache_opt = if use_cache { Some(cache::Cache::new()) } else { None };
 
     let stats = match sim_mode {
         "scalar" => sim_scalar::run(&program.instructions, &mut regs, &mut mem, verbose),
-        "pipeline" => sim_pipeline::run(
+        "pipeline" => sim_pipeline::run_with_cache(
             &program.instructions, &mut regs, &mut mem,
-            num_units, pred_kind, forwarding, verbose,
+            num_units, pred_kind, forwarding, verbose, cache_opt,
         ),
-        "ooo" => sim_ooo::run(
+        "ooo" => sim_ooo::run_with_cache(
             &program.instructions, &mut regs, &mut mem,
-            num_units, pred_kind, verbose,
+            num_units, pred_kind, verbose, cache_opt,
         ),
         _ => {
             eprintln!("Unknown simulator mode: {}", sim_mode);
@@ -242,75 +248,167 @@ fn run_experiments(
     }
 
     println!("=== EXPERIMENT SUITE — ACA Processor Simulator ===\n");
+    println!("(4 experiments: ISA enhancement, cache extension, SIMD extension, compiler optimisation)\n");
 
-    // Experiment 1: Pipelining benefit
-    println!("=== Experiment 1: Pipeline Speedup over Scalar ===\n");
-    println!("{:<25} {:>10} {:>10} {:>10} {:>10}",
-        "Program", "Scalar", "Pipeline", "Speedup", "IPC(pipe)");
-    println!("{}", "-".repeat(70));
-
-    for path in &asm_files {
-        let name = std::path::Path::new(path).file_stem()
+    // Experiment 1: Post-indexed addressing impact
+    println!("=== Experiment 1: Post-Indexed Addressing Impact ===\n");
+    let va_post = asm_files.iter().find(|p| {
+        let stem = std::path::Path::new(p).file_stem()
             .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        stem == "vector_add"
+    });
+    let va_plain = asm_files.iter().find(|p| p.contains("vector_add_plain"));
 
-        let s_scalar = run_fresh(path, "scalar", 1, branch_pred::PredictorKind::Static, false, verbose);
-        let s_pipe = run_fresh(path, "pipeline", 1, branch_pred::PredictorKind::Static, false, verbose);
+    if let (Some(post), Some(plain)) = (va_post, va_plain) {
+        println!("{:<35} {:>10} {:>10} {:>10} {:>10}",
+            "Version / Simulator", "Cycles", "Instrs", "IPC", "Speedup");
+        println!("{}", "-".repeat(80));
 
-        if let (Some(sc), Some(pi)) = (s_scalar, s_pipe) {
-            let speedup = sc.cycles as f64 / pi.cycles as f64;
-            println!("{:<25} {:>10} {:>10} {:>10.2}x {:>10.4}",
-                name, sc.cycles, pi.cycles, speedup, pi.ipc());
-        }
-    }
+        for (sim_label, sim_mode, units) in [
+            ("scalar", "scalar", 1usize),
+            ("pipeline-2", "pipeline", 2),
+            ("ooo-4", "ooo", 4),
+        ] {
+            let s_plain = run_fresh(plain.as_str(), sim_mode, units,
+                branch_pred::PredictorKind::TwoBit, true, verbose);
+            let s_post = run_fresh(post.as_str(), sim_mode, units,
+                branch_pred::PredictorKind::TwoBit, true, verbose);
 
-    // Experiment 2: Branch predictor comparison
-    println!("\n=== Experiment 2: Branch Prediction Comparison ===\n");
-    let predictors = [
-        branch_pred::PredictorKind::Static,
-        branch_pred::PredictorKind::OneBit,
-        branch_pred::PredictorKind::TwoBit,
-    ];
-    println!("{:<25} {:>12} {:>12} {:>12}",
-        "Program", "Static", "1-bit", "2-bit");
-    println!("{}", "-".repeat(65));
-
-    for path in &asm_files {
-        let name = std::path::Path::new(path).file_stem()
-            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let mut row = format!("{:<25}", name);
-        for pk in &predictors {
-            let s = run_fresh(path, "pipeline", 2, *pk, false, verbose);
-            if let Some(stats) = s {
-                row += &format!(" {:>5} ({:.0}%)", stats.cycles,
-                    stats.prediction_accuracy() * 100.0);
+            if let (Some(sp), Some(spo)) = (s_plain, s_post) {
+                let speedup = sp.cycles as f64 / spo.cycles as f64;
+                println!("  LDR+ADDI/{:<18} {:>10} {:>10} {:>10.4} {:>10}",
+                    sim_label, sp.cycles, sp.instructions_executed, sp.ipc(), "-");
+                println!("  LDRPOST/{:<19} {:>10} {:>10} {:>10.4} {:>9.2}x",
+                    sim_label, spo.cycles, spo.instructions_executed, spo.ipc(), speedup);
             }
         }
-        println!("{}", row);
+    } else {
+        println!("  [skip] vector_add.asm or vector_add_plain.asm not found");
     }
 
-    // Experiment 3: Execution unit scaling (OoO)
-    println!("\n=== Experiment 3: Execution Unit Scaling (Out-of-Order) ===\n");
-    println!("{:<25} {:>8} {:>8} {:>8} {:>8} {:>8}",
-        "Program", "1 unit", "2 units", "3 units", "4 units", "6 units");
-    println!("{}", "-".repeat(70));
+    // Experiment 2: Cache locality analysis
+    println!("\n=== Experiment 2: Cache Locality & Conflict Miss Analysis (Cache Extension) ===\n");
+    let cache_programs: Vec<&String> = asm_files.iter()
+        .filter(|p| p.contains("cache_"))
+        .collect();
 
-    for path in &asm_files {
-        let name = std::path::Path::new(path).file_stem()
-            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let mut row = format!("{:<25}", name);
-        for units in [1, 2, 3, 4, 6] {
-            let s = run_fresh(path, "ooo", units, branch_pred::PredictorKind::TwoBit, false, verbose);
-            if let Some(stats) = s {
-                row += &format!(" {:>8}", stats.cycles);
+    if !cache_programs.is_empty() {
+        println!("{:<25} {:>10} {:>10} {:>10} {:>10} {:>10}",
+            "Access Pattern", "No Cache", "Cache", "Hits", "Misses", "Hit Rate");
+        println!("{}", "-".repeat(80));
+
+        for path in &cache_programs {
+            let name = std::path::Path::new(path).file_stem()
+                .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+
+            let s_no = run_fresh_cached(path, "pipeline", 2,
+                branch_pred::PredictorKind::TwoBit, true, verbose, false);
+            let s_cache = run_fresh_cached(path, "pipeline", 2,
+                branch_pred::PredictorKind::TwoBit, true, verbose, true);
+
+            if let (Some(nc), Some(wc)) = (s_no, s_cache) {
+                let total = wc.cache_hits + wc.cache_misses;
+                let hit_rate = if total > 0 {
+                    wc.cache_hits as f64 / total as f64 * 100.0
+                } else { 0.0 };
+                println!("{:<25} {:>10} {:>10} {:>10} {:>10} {:>9.1}%",
+                    name, nc.cycles, wc.cycles, wc.cache_hits, wc.cache_misses, hit_rate);
             }
         }
-        println!("{}", row);
+    } else {
+        println!("  [skip] No cache_*.asm benchmarks found");
     }
 
-    // Experiment 4: Loop unrolling benefit
-    println!("\n=== Experiment 4: Loop Unrolling Benefit ===\n");
-    let va_path = asm_files.iter().find(|p| p.contains("vector_add.asm") && !p.contains("unrolled"));
-    let va_unrolled = asm_files.iter().find(|p| p.contains("unrolled"));
+    // Experiment 3: SIMD vector length scaling
+    println!("\n=== Experiment 3: SIMD Vector Length Scaling (SIMD Extension) ===\n");
+    {
+        // Generate inline assembly for different vector lengths and compare
+        // SIMD (VADD) vs scalar loop at each length
+        let lengths = [2u32, 4, 8, 16, 32];
+        println!("{:<8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+            "VecLen", "Loop Cyc", "SIMD Cyc", "Loop Instr", "SIMD Instr", "Speedup");
+        println!("{}", "-".repeat(65));
+
+        for &len in &lengths {
+            // Generate data section with `len` words
+            let data_words: Vec<String> = (1..=len).map(|i| i.to_string()).collect();
+            let data_b: Vec<String> = (1..=len).map(|i| (i * 2).to_string()).collect();
+            let data_c: Vec<String> = vec!["0".to_string(); len as usize];
+
+            let data_a_str = data_words.join(", ");
+            let data_b_str = data_b.join(", ");
+            let data_c_str = data_c.join(", ");
+
+            let b_offset = 0x1000 + len * 4;
+            let c_offset = b_offset + len * 4;
+
+            // SIMD version (uses vector register file V0-V7)
+            let simd_src = format!(
+                ".data 0x1000\n\
+                 arr_a: .word {data_a}\n\
+                 arr_b: .word {data_b}\n\
+                 arr_c: .word {data_c}\n\
+                 .text\n\
+                 MOVI R0, #0x1000\n\
+                 MOVI R1, #0x{b_off:X}\n\
+                 MOVI R2, #0x{c_off:X}\n\
+                 VLDR V0, R0, #{len}\n\
+                 VLDR V1, R1, #{len}\n\
+                 VADD V2, V0, V1, #{len}\n\
+                 VSTR V2, R2, #{len}\n\
+                 HALT\n",
+                data_a = data_a_str, data_b = data_b_str, data_c = data_c_str,
+                b_off = b_offset, c_off = c_offset, len = len
+            );
+
+            // Scalar loop version
+            let loop_src = format!(
+                ".data 0x1000\n\
+                 arr_a: .word {data_a}\n\
+                 arr_b: .word {data_b}\n\
+                 arr_c: .word {data_c}\n\
+                 .text\n\
+                 MOVI R0, #0x1000\n\
+                 MOVI R1, #0x{b_off:X}\n\
+                 MOVI R2, #0x{c_off:X}\n\
+                 MOVI R3, #0\n\
+                 MOVI R4, #{len}\n\
+                 loop: CMP R3, R4\n\
+                 BGE done\n\
+                 LDRPOST R5, R0, #4\n\
+                 LDRPOST R6, R1, #4\n\
+                 ADD R7, R5, R6\n\
+                 STRPOST R7, R2, #4\n\
+                 ADDI R3, R3, #1\n\
+                 B loop\n\
+                 done: HALT\n",
+                data_a = data_a_str, data_b = data_b_str, data_c = data_c_str,
+                b_off = b_offset, c_off = c_offset, len = len
+            );
+
+            // Assemble and run both inline
+            let s_loop = run_inline(&loop_src, "pipeline", 2,
+                branch_pred::PredictorKind::TwoBit, true, verbose);
+            let s_simd = run_inline(&simd_src, "pipeline", 2,
+                branch_pred::PredictorKind::TwoBit, true, verbose);
+
+            if let (Some(sl), Some(sv)) = (s_loop, s_simd) {
+                let speedup = sl.cycles as f64 / sv.cycles as f64;
+                println!("{:<8} {:>10} {:>10} {:>10} {:>10} {:>9.2}x",
+                    len, sl.cycles, sv.cycles,
+                    sl.instructions_executed, sv.instructions_executed, speedup);
+            }
+        }
+    }
+
+    // Experiment 4: Loop unrolling × microarchitecture interaction
+    println!("\n=== Experiment 4: Loop Unrolling × Microarchitecture Interaction ===\n");
+    let va_path = asm_files.iter().find(|p| {
+        let stem = std::path::Path::new(p).file_stem()
+            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        stem == "vector_add"
+    });
+    let va_unrolled = asm_files.iter().find(|p| p.contains("vector_add_unrolled"));
 
     if let (Some(orig), Some(unrolled)) = (va_path, va_unrolled) {
         println!("{:<25} {:>10} {:>10} {:>10}",
@@ -329,26 +427,6 @@ fn run_experiments(
         }
     }
 
-    // Experiment 5: Data forwarding impact
-    println!("\n=== Experiment 5: Data Forwarding Impact ===\n");
-    println!("{:<25} {:>12} {:>12} {:>10}",
-        "Program", "No Fwd", "Fwd", "Reduction");
-    println!("{}", "-".repeat(62));
-
-    for path in &asm_files {
-        let name = std::path::Path::new(path).file_stem()
-            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-
-        let s_no_fwd = run_fresh(path, "pipeline", 2, branch_pred::PredictorKind::TwoBit, false, verbose);
-        let s_fwd    = run_fresh(path, "pipeline", 2, branch_pred::PredictorKind::TwoBit, true, verbose);
-
-        if let (Some(nf), Some(fw)) = (s_no_fwd, s_fwd) {
-            let reduction = (1.0 - fw.cycles as f64 / nf.cycles as f64) * 100.0;
-            println!("{:<25} {:>12} {:>12} {:>9.1}%",
-                name, nf.cycles, fw.cycles, reduction);
-        }
-    }
-
     println!("\n[Experiments complete]");
 }
 
@@ -361,6 +439,18 @@ fn run_fresh(
     forwarding: bool,
     verbose: bool,
 ) -> Option<stats::Stats> {
+    run_fresh_cached(path, sim_mode, num_units, pred_kind, forwarding, verbose, false)
+}
+
+fn run_fresh_cached(
+    path: &str,
+    sim_mode: &str,
+    num_units: usize,
+    pred_kind: branch_pred::PredictorKind,
+    forwarding: bool,
+    verbose: bool,
+    use_cache: bool,
+) -> Option<stats::Stats> {
     let mut mem = memory::Memory::new();
     let program = match assembler::load_from_file(path, &mut mem) {
         Ok(p) => p,
@@ -370,16 +460,52 @@ fn run_fresh(
         }
     };
     let mut regs = regs::RegFile::new(0xFFFC);
+    let cache_opt = if use_cache { Some(cache::Cache::new()) } else { None };
 
     let result = match sim_mode {
         "scalar" => sim_scalar::run(&program.instructions, &mut regs, &mut mem, verbose),
-        "pipeline" => sim_pipeline::run(
+        "pipeline" => sim_pipeline::run_with_cache(
             &program.instructions, &mut regs, &mut mem,
-            num_units, pred_kind, forwarding, verbose,
+            num_units, pred_kind, forwarding, verbose, cache_opt,
         ),
-        "ooo" => sim_ooo::run(
+        "ooo" => sim_ooo::run_with_cache(
             &program.instructions, &mut regs, &mut mem,
-            num_units, pred_kind, verbose,
+            num_units, pred_kind, verbose, cache_opt,
+        ),
+        _ => return None,
+    };
+
+    Some(result)
+}
+
+/// Helper: assemble and run an inline assembly string (for generated experiments).
+fn run_inline(
+    source: &str,
+    sim_mode: &str,
+    num_units: usize,
+    pred_kind: branch_pred::PredictorKind,
+    forwarding: bool,
+    verbose: bool,
+) -> Option<stats::Stats> {
+    let mut mem = memory::Memory::new();
+    let program = match assembler::assemble(source, &mut mem) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("  [skip] inline asm: {}", e);
+            return None;
+        }
+    };
+    let mut regs = regs::RegFile::new(0xFFFC);
+
+    let result = match sim_mode {
+        "scalar" => sim_scalar::run(&program.instructions, &mut regs, &mut mem, verbose),
+        "pipeline" => sim_pipeline::run_with_cache(
+            &program.instructions, &mut regs, &mut mem,
+            num_units, pred_kind, forwarding, verbose, None,
+        ),
+        "ooo" => sim_ooo::run_with_cache(
+            &program.instructions, &mut regs, &mut mem,
+            num_units, pred_kind, verbose, None,
         ),
         _ => return None,
     };
@@ -397,6 +523,7 @@ fn print_usage() {
     eprintln!("  --units <N>          Execution units / reservation stations (default: 2)");
     eprintln!("  --predictor <kind>   static | 1bit | 2bit  (default: static)");
     eprintln!("  --forwarding         Enable data forwarding (pipeline mode)");
+    eprintln!("  --cache              Enable L1 data cache simulation");
     eprintln!("  --verbose, -v        Print per-cycle trace");
     eprintln!("  --batch              Run all simulators and print comparison");
     eprintln!("  --experiment         Run full experiment suite on programs/ directory");

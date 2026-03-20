@@ -15,6 +15,8 @@ pub struct Stats {
     pub pipeline_flushes: u64,
     pub mem_reads: u64,
     pub mem_writes: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
 }
 
 impl Stats {
@@ -66,6 +68,13 @@ impl fmt::Display for Stats {
         }
         writeln!(f, "  Memory reads          : {}", self.mem_reads)?;
         writeln!(f, "  Memory writes         : {}", self.mem_writes)?;
+        if self.cache_hits + self.cache_misses > 0 {
+            let total = self.cache_hits + self.cache_misses;
+            writeln!(f, "  Cache hits            : {}", self.cache_hits)?;
+            writeln!(f, "  Cache misses          : {}", self.cache_misses)?;
+            writeln!(f, "  Cache hit rate        : {:.2}%",
+                self.cache_hits as f64 / total as f64 * 100.0)?;
+        }
         Ok(())
     }
 }

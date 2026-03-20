@@ -16,6 +16,7 @@ use crate::memory::Memory;
 use crate::execute::{exec, commit, ExecResult};
 use crate::branch_pred::{BranchPredictor, PredictorKind};
 use crate::stats::Stats;
+use crate::cache::{Cache, MISS_PENALTY};
 
 // ---------------------------------------------------------------------------
 // Pipeline register between stages
@@ -50,6 +51,20 @@ pub fn run(
     predictor_kind: PredictorKind,
     forwarding_enabled: bool,
     verbose: bool,
+) -> Stats {
+    run_with_cache(program, regs, mem, num_exec_units, predictor_kind,
+                   forwarding_enabled, verbose, None)
+}
+
+pub fn run_with_cache(
+    program: &[Instruction],
+    regs: &mut RegFile,
+    mem: &mut Memory,
+    num_exec_units: usize,
+    predictor_kind: PredictorKind,
+    forwarding_enabled: bool,
+    verbose: bool,
+    mut cache: Option<Cache>,
 ) -> Stats {
     let mut stats = Stats::new();
     let mut pc: usize = 0;
@@ -124,12 +139,14 @@ pub fn run(
         let mut eff_regs = regs.clone();
         if let Some(ref result) = wb_slot.result {
             for &(r, val) in &result.reg_writes { eff_regs.set(r, val); }
+            for (v, data) in &result.vreg_writes { eff_regs.set_vreg_slice(*v, data); }
             if let Some(cpsr) = result.new_cpsr { eff_regs.set_cpsr_raw(cpsr); }
         }
         if forwarding_enabled {
             // Forward from MEM stage
             if let Some(ref result) = mem_slot.result {
                 for &(r, val) in &result.reg_writes { eff_regs.set(r, val); }
+                for (v, data) in &result.vreg_writes { eff_regs.set_vreg_slice(*v, data); }
                 if let Some(cpsr) = result.new_cpsr { eff_regs.set_cpsr_raw(cpsr); }
             }
             // Forward from completed EX slots
@@ -137,6 +154,7 @@ pub fn run(
                 if !slot.is_empty() && slot.remaining_cycles <= 1 {
                     if let Some(ref result) = slot.result {
                         for &(r, val) in &result.reg_writes { eff_regs.set(r, val); }
+                        for (v, data) in &result.vreg_writes { eff_regs.set_vreg_slice(*v, data); }
                         if let Some(cpsr) = result.new_cpsr { eff_regs.set_cpsr_raw(cpsr); }
                     }
                 }
@@ -147,17 +165,29 @@ pub fn run(
         let mut stall_fetch_decode = false;
         if let Some(ref dec_instr) = decode_slot.instr {
             let sources = dec_instr.sources();
+            let vsources = dec_instr.vsources();
             let needs_flags = dec_instr.opcode.is_conditional_branch();
 
             // Check all in-flight execution slots for RAW hazards
             for slot in &exec_slots {
                 if let Some(ref ex_instr) = slot.instr {
                     let dests = ex_instr.destinations();
-                    // Register hazards
+                    // GP register hazards
                     for src in &sources {
                         if dests.contains(src) {
                             if forwarding_enabled && slot.remaining_cycles <= 1 {
                                 // Result available via forwarding — no stall
+                            } else {
+                                stall_fetch_decode = true;
+                            }
+                        }
+                    }
+                    // Vector register hazards
+                    let vdests = ex_instr.vdestinations();
+                    for vsrc in &vsources {
+                        if vdests.contains(vsrc) {
+                            if forwarding_enabled && slot.remaining_cycles <= 1 {
+                                // Vector result available via forwarding
                             } else {
                                 stall_fetch_decode = true;
                             }
@@ -181,6 +211,13 @@ pub fn run(
                         stall_fetch_decode = true;
                     }
                 }
+                // Vector register hazards in MEM slot
+                let vdests = mem_instr.vdestinations();
+                for vsrc in &vsources {
+                    if vdests.contains(vsrc) && !forwarding_enabled {
+                        stall_fetch_decode = true;
+                    }
+                }
                 if needs_flags && mem_instr.opcode.updates_flags() && !forwarding_enabled {
                     stall_fetch_decode = true;
                 }
@@ -195,12 +232,47 @@ pub fn run(
                 for slot in exec_slots.iter_mut() {
                     if slot.is_empty() {
                         let mut new_slot = decode_slot.clone();
-                        new_slot.remaining_cycles = instr.opcode.latency();
+                        new_slot.remaining_cycles = instr.effective_latency();
                         new_slot.seq = issue_seq;
                         issue_seq += 1;
 
                         // Execute the instruction using effective (forwarded) registers
                         let result = exec(instr, &eff_regs, mem);
+
+                        // Cache check for memory instructions
+                        if let Some(ref mut c) = cache {
+                            if instr.opcode.is_load() || instr.opcode.is_store() {
+                                if matches!(instr.opcode, Opcode::VLdr | Opcode::VStr) {
+                                    // VLDR/VSTR: check cache for each element
+                                    let len = instr.imm.max(0) as u32;
+                                    let src_base = instr.rn.map(|r| eff_regs.get(r)).unwrap_or(0);
+                                    let mut miss_count = 0u32;
+                                    for el in 0..len {
+                                        if !c.access(src_base + el * 4) {
+                                            miss_count += 1;
+                                        }
+                                    }
+                                    stats.cache_hits += (len - miss_count) as u64;
+                                    stats.cache_misses += miss_count as u64;
+                                    new_slot.remaining_cycles += miss_count * MISS_PENALTY;
+                                } else {
+                                    // Scalar memory instruction
+                                    if let Some(rn) = instr.rn {
+                                        let base = eff_regs.get(rn);
+                                        let addr = match instr.opcode {
+                                            Opcode::LdrPost | Opcode::StrPost => base,
+                                            _ => (base as i32 + instr.imm) as u32,
+                                        };
+                                        if !c.access(addr) {
+                                            new_slot.remaining_cycles += MISS_PENALTY;
+                                            stats.cache_misses += 1;
+                                        } else {
+                                            stats.cache_hits += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         // Branch handling
                         if instr.opcode.is_branch() {
@@ -299,6 +371,12 @@ pub fn run(
 
     if verbose {
         println!("{}", regs);
+    }
+
+    // Copy cache statistics into stats
+    if let Some(ref c) = cache {
+        stats.cache_hits = c.hits;
+        stats.cache_misses = c.misses;
     }
 
     stats

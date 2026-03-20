@@ -1,9 +1,10 @@
 /// Register file with CPSR flag management.
 ///
-/// Models 16 general-purpose 32-bit registers (R0-R15) and a condition-flag
-/// register (CPSR) with N, Z, C, V bits.
+/// Models 16 general-purpose 32-bit registers (R0-R15), a condition-flag
+/// register (CPSR) with N, Z, C, V bits, and a separate vector register file
+/// (V0-V7) for SIMD operations.
 
-use crate::isa::{NUM_REGS, SP, PC, reg_name};
+use crate::isa::{NUM_REGS, NUM_VREGS, MAX_VEC_LEN, SP, PC, reg_name, vreg_name};
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -16,13 +17,15 @@ const FLAG_C: u32 = 1 << 29; // Carry
 const FLAG_V: u32 = 1 << 28; // Overflow
 
 // ---------------------------------------------------------------------------
-// Register file
+// Register file (scalar GPRs + CPSR + vector registers)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 pub struct RegFile {
     gpr: [u32; NUM_REGS],
     cpsr: u32,
+    /// Vector register file: V0-V7, each holding up to MAX_VEC_LEN u32 elements.
+    vreg: [[u32; MAX_VEC_LEN]; NUM_VREGS],
 }
 
 impl RegFile {
@@ -31,6 +34,7 @@ impl RegFile {
         let mut rf = RegFile {
             gpr: [0u32; NUM_REGS],
             cpsr: 0,
+            vreg: [[0u32; MAX_VEC_LEN]; NUM_VREGS],
         };
         rf.gpr[SP] = stack_top;
         rf
@@ -119,6 +123,40 @@ impl RegFile {
     /// Raw CPSR value (used by reservation-station snapshots).
     pub fn cpsr_raw(&self) -> u32 { self.cpsr }
     pub fn set_cpsr_raw(&mut self, v: u32) { self.cpsr = v; }
+
+    // -- Vector register access -----------------------------------------------
+
+    /// Read a single element from a vector register.
+    pub fn get_vreg_element(&self, v: usize, idx: usize) -> u32 {
+        if v < NUM_VREGS && idx < MAX_VEC_LEN {
+            self.vreg[v][idx]
+        } else {
+            0
+        }
+    }
+
+    /// Write a single element to a vector register.
+    #[allow(dead_code)]
+    pub fn set_vreg_element(&mut self, v: usize, idx: usize, val: u32) {
+        if v < NUM_VREGS && idx < MAX_VEC_LEN {
+            self.vreg[v][idx] = val;
+        }
+    }
+
+    /// Read `len` elements from a vector register as a slice.
+    #[allow(dead_code)]
+    pub fn get_vreg_slice(&self, v: usize, len: usize) -> &[u32] {
+        let len = len.min(MAX_VEC_LEN);
+        if v < NUM_VREGS { &self.vreg[v][..len] } else { &[] }
+    }
+
+    /// Write `len` elements into a vector register from a slice.
+    pub fn set_vreg_slice(&mut self, v: usize, data: &[u32]) {
+        if v < NUM_VREGS {
+            let len = data.len().min(MAX_VEC_LEN);
+            self.vreg[v][..len].copy_from_slice(&data[..len]);
+        }
+    }
 }
 
 impl fmt::Display for RegFile {
@@ -131,6 +169,19 @@ impl fmt::Display for RegFile {
         writeln!(f, "  CPSR = 0x{:08X}  [N={} Z={} C={} V={}]",
             self.cpsr,
             self.flag_n() as u8, self.flag_z() as u8,
-            self.flag_c() as u8, self.flag_v() as u8)
+            self.flag_c() as u8, self.flag_v() as u8)?;
+        writeln!(f, "--- Vector Registers ---")?;
+        for v in 0..NUM_VREGS {
+            let nonzero = self.vreg[v].iter().take(8).any(|&x| x != 0);
+            if nonzero {
+                write!(f, "  {} = [", vreg_name(v))?;
+                for i in 0..8.min(MAX_VEC_LEN) {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "0x{:08X}", self.vreg[v][i])?;
+                }
+                writeln!(f, ", ...]")?;
+            }
+        }
+        Ok(())
     }
 }
