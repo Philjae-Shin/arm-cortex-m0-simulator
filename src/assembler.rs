@@ -328,6 +328,22 @@ fn parse_instruction(
             instr.imm = offset;
         }
 
+        // -- Post-indexed memory access --------------------------------------
+        // Syntax: LDRPOST Rd, Rn, #offset  →  Rd = Mem[Rn]; Rn += offset
+        "LDRPOST" => {
+            instr.opcode = Opcode::LdrPost;
+            instr.rd = Some(parse_reg(ops.get(0).ok_or("LDRPOST: missing Rd")?)?);
+            instr.rn = Some(parse_reg(ops.get(1).ok_or("LDRPOST: missing Rn")?)?);
+            instr.imm = parse_imm(ops.get(2).ok_or("LDRPOST: missing offset")?)?;
+        }
+        // Syntax: STRPOST Rm, Rn, #offset  →  Mem[Rn] = Rm; Rn += offset
+        "STRPOST" => {
+            instr.opcode = Opcode::StrPost;
+            instr.rm = Some(parse_reg(ops.get(0).ok_or("STRPOST: missing Rm")?)?);
+            instr.rn = Some(parse_reg(ops.get(1).ok_or("STRPOST: missing Rn")?)?);
+            instr.imm = parse_imm(ops.get(2).ok_or("STRPOST: missing offset")?)?;
+        }
+
         // -- Branches -------------------------------------------------------
         "B"   => { instr.opcode = Opcode::B;   instr.imm = resolve_branch(ops, pc, labels)?; }
         "BEQ" => { instr.opcode = Opcode::Beq; instr.imm = resolve_branch(ops, pc, labels)?; }
@@ -350,6 +366,52 @@ fn parse_instruction(
         "POP" => {
             instr.opcode = Opcode::Pop;
             instr.reg_list = parse_reg_list(ops)?;
+        }
+
+        // -- Vector (extension) — uses separate vector register file V0-V7 -------
+        // VLDR Vd, Rn, #len — load len words from Mem[Rn..] into Vd
+        "VLDR" => {
+            instr.opcode = Opcode::VLdr;
+            instr.vd = Some(parse_vreg(ops.get(0).ok_or("VLDR: missing Vd")?)?);
+            instr.rn = Some(parse_reg(ops.get(1).ok_or("VLDR: missing Rn")?)?);
+            instr.imm = parse_imm(ops.get(2).ok_or("VLDR: missing #len")?)?;
+        }
+        // VSTR Vs, Rn, #len — store len words from Vs to Mem[Rn..]
+        "VSTR" => {
+            instr.opcode = Opcode::VStr;
+            instr.vd = Some(parse_vreg(ops.get(0).ok_or("VSTR: missing Vs")?)?);
+            instr.rn = Some(parse_reg(ops.get(1).ok_or("VSTR: missing Rn")?)?);
+            instr.imm = parse_imm(ops.get(2).ok_or("VSTR: missing #len")?)?;
+        }
+        // VADD Vd, Vn, Vm, #len — element-wise addition
+        "VADD" => {
+            instr.opcode = Opcode::VAdd;
+            instr.vd = Some(parse_vreg(ops.get(0).ok_or("VADD: missing Vd")?)?);
+            instr.vn = Some(parse_vreg(ops.get(1).ok_or("VADD: missing Vn")?)?);
+            instr.vm = Some(parse_vreg(ops.get(2).ok_or("VADD: missing Vm")?)?);
+            instr.imm = parse_imm(ops.get(3).ok_or("VADD: missing #len")?)?;
+        }
+        "VSUB" => {
+            instr.opcode = Opcode::VSub;
+            instr.vd = Some(parse_vreg(ops.get(0).ok_or("VSUB: missing Vd")?)?);
+            instr.vn = Some(parse_vreg(ops.get(1).ok_or("VSUB: missing Vn")?)?);
+            instr.vm = Some(parse_vreg(ops.get(2).ok_or("VSUB: missing Vm")?)?);
+            instr.imm = parse_imm(ops.get(3).ok_or("VSUB: missing #len")?)?;
+        }
+        "VMUL" => {
+            instr.opcode = Opcode::VMul;
+            instr.vd = Some(parse_vreg(ops.get(0).ok_or("VMUL: missing Vd")?)?);
+            instr.vn = Some(parse_vreg(ops.get(1).ok_or("VMUL: missing Vn")?)?);
+            instr.vm = Some(parse_vreg(ops.get(2).ok_or("VMUL: missing Vm")?)?);
+            instr.imm = parse_imm(ops.get(3).ok_or("VMUL: missing #len")?)?;
+        }
+        // VDOT Rd, Vn, Vm, #len — dot product, scalar result to GP register
+        "VDOT" => {
+            instr.opcode = Opcode::VDot;
+            instr.rd = Some(parse_reg(ops.get(0).ok_or("VDOT: missing Rd")?)?);
+            instr.vn = Some(parse_vreg(ops.get(1).ok_or("VDOT: missing Vn")?)?);
+            instr.vm = Some(parse_vreg(ops.get(2).ok_or("VDOT: missing Vm")?)?);
+            instr.imm = parse_imm(ops.get(3).ok_or("VDOT: missing #len")?)?;
         }
 
         // -- Special --------------------------------------------------------
@@ -394,6 +456,21 @@ fn parse_reg(s: &str) -> Result<usize, String> {
                 })
         }
         _ => Err(format!("Expected register, got: {}", s)),
+    }
+}
+
+/// Parse a vector register name like "V0".."V7".
+fn parse_vreg(s: &str) -> Result<usize, String> {
+    let upper = s.to_uppercase();
+    if upper.starts_with('V') {
+        upper[1..].parse::<usize>()
+            .map_err(|_| format!("Bad vector register: {}", s))
+            .and_then(|n| {
+                if n < crate::isa::NUM_VREGS { Ok(n) }
+                else { Err(format!("Vector register out of range (V0-V7): {}", s)) }
+            })
+    } else {
+        Err(format!("Expected vector register (V0-V7), got: {}", s))
     }
 }
 

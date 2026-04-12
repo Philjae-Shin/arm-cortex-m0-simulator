@@ -18,6 +18,7 @@ use crate::memory::Memory;
 use crate::execute::{exec, ExecResult};
 use crate::branch_pred::{BranchPredictor, PredictorKind};
 use crate::stats::Stats;
+use crate::cache::{Cache, MISS_PENALTY};
 use std::collections::VecDeque;
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,8 @@ struct RobEntry {
     id: usize,
     instr: Instruction,
     state: RobState,
-    dest_regs: Vec<usize>,  // architectural destination registers
+    dest_regs: Vec<usize>,   // architectural GP destination registers
+    dest_vregs: Vec<usize>,  // architectural vector destination registers
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +108,44 @@ impl RenameTable {
 }
 
 // ---------------------------------------------------------------------------
+// Vector register alias table (VRAT) — maps vector regs to ROB tags
+// ---------------------------------------------------------------------------
+
+struct VRenameTable {
+    mapping: Vec<Option<usize>>,
+}
+
+impl VRenameTable {
+    fn new() -> Self {
+        VRenameTable {
+            mapping: vec![None; NUM_VREGS],
+        }
+    }
+
+    fn get(&self, vreg: usize) -> Option<usize> {
+        if vreg < self.mapping.len() { self.mapping[vreg] } else { None }
+    }
+
+    fn set(&mut self, vreg: usize, rob_id: usize) {
+        if vreg < self.mapping.len() {
+            self.mapping[vreg] = Some(rob_id);
+        }
+    }
+
+    fn clear(&mut self, vreg: usize, rob_id: usize) {
+        if vreg < self.mapping.len() {
+            if self.mapping[vreg] == Some(rob_id) {
+                self.mapping[vreg] = None;
+            }
+        }
+    }
+
+    fn flush(&mut self) {
+        for m in self.mapping.iter_mut() { *m = None; }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Completed instruction descriptor (used to avoid double-mutable-borrow)
 // ---------------------------------------------------------------------------
 
@@ -125,9 +165,21 @@ pub fn run(
     program: &[Instruction],
     regs: &mut RegFile,
     mem: &mut Memory,
+    num_rs: usize,
+    predictor_kind: PredictorKind,
+    verbose: bool,
+) -> Stats {
+    run_with_cache(program, regs, mem, num_rs, predictor_kind, verbose, None)
+}
+
+pub fn run_with_cache(
+    program: &[Instruction],
+    regs: &mut RegFile,
+    mem: &mut Memory,
     num_rs: usize,         // number of reservation stations
     predictor_kind: PredictorKind,
     verbose: bool,
+    mut cache: Option<Cache>,
 ) -> Stats {
     let mut stats = Stats::new();
     let mut pc: usize = 0;
@@ -137,6 +189,7 @@ pub fn run(
     let mut rob: VecDeque<RobEntry> = VecDeque::with_capacity(rob_capacity);
     let mut rs_pool: Vec<Option<RSEntry>> = vec![None; num_rs];
     let mut rat = RenameTable::new();
+    let mut vrat = VRenameTable::new();  // Vector register alias table
     let mut predictor = BranchPredictor::new(predictor_kind);
     let mut next_rob_id: usize = 0;
 
@@ -165,10 +218,15 @@ pub fn run(
                 _ => unreachable!(),
             };
 
-            // Apply register writes
+            // Apply GP register writes
             for &(r, val) in &result.reg_writes {
                 regs.set(r, val);
                 rat.clear(r, entry.id);
+            }
+            // Apply vector register writes
+            for (v, data) in &result.vreg_writes {
+                regs.set_vreg_slice(*v, data);
+                vrat.clear(*v, entry.id);
             }
             // Apply CPSR
             if let Some(cpsr) = result.new_cpsr {
@@ -273,11 +331,15 @@ pub fn run(
                         }
                     }
 
-                    // Reset and rebuild RAT
+                    // Reset and rebuild RAT + VRAT
                     rat.flush();
+                    vrat.flush();
                     for rob_e in &rob {
                         for &d in &rob_e.dest_regs {
                             rat.set(d, rob_e.id);
+                        }
+                        for &vd in &rob_e.dest_vregs {
+                            vrat.set(vd, rob_e.id);
                         }
                     }
 
@@ -316,18 +378,26 @@ pub fn run(
             // CDB broadcast: forward values to waiting RS entries
             for rs_entry in rs_pool.iter_mut() {
                 if let Some(ref mut other) = rs_entry {
-                    // Forward register values
+                    // Forward GP register values
                     let other_sources = other.instr.sources();
+                    let num_gp_sources = other_sources.len();
                     for (idx, tag) in other.src_tags.iter_mut().enumerate() {
                         if *tag == Some(ce.rob_id) {
-                            if let Some(&reg) = other_sources.get(idx) {
-                                for &(wr, val) in &result_vals {
-                                    if wr == reg {
-                                        other.src_vals[idx] = Some(val);
-                                        *tag = None;
-                                        break;
+                            if idx < num_gp_sources {
+                                // GP source: look up actual value from CDB
+                                if let Some(&reg) = other_sources.get(idx) {
+                                    for &(wr, val) in &result_vals {
+                                        if wr == reg {
+                                            other.src_vals[idx] = Some(val);
+                                            *tag = None;
+                                            break;
+                                        }
                                     }
                                 }
+                            } else {
+                                // Vector source: just mark as ready (data via vreg file)
+                                other.src_vals[idx] = Some(0); // dummy value
+                                *tag = None;
                             }
                         }
                     }
@@ -360,7 +430,43 @@ pub fn run(
             if let Some(ref mut entry) = rs_entry {
                 if !entry.executing && entry.all_sources_ready() {
                     entry.executing = true;
-                    entry.remaining_cycles = entry.instr.opcode.latency().saturating_sub(1);
+                    entry.remaining_cycles = entry.instr.effective_latency().saturating_sub(1);
+
+                    // Cache check for memory instructions
+                    if let Some(ref mut c) = cache {
+                        if entry.instr.opcode.is_load() || entry.instr.opcode.is_store() {
+                            if matches!(entry.instr.opcode, Opcode::VLdr | Opcode::VStr) {
+                                // VLDR/VSTR: check cache for each element
+                                let len = entry.instr.imm.max(0) as u32;
+                                let src_base = entry.src_vals.get(0)
+                                    .and_then(|v| *v).unwrap_or(0);
+                                let mut miss_count = 0u32;
+                                for el in 0..len {
+                                    if !c.access(src_base + el * 4) {
+                                        miss_count += 1;
+                                    }
+                                }
+                                stats.cache_hits += (len - miss_count) as u64;
+                                stats.cache_misses += miss_count as u64;
+                                entry.remaining_cycles += miss_count * MISS_PENALTY;
+                            } else {
+                                // Scalar memory instruction
+                                if let Some(Some(base)) = entry.src_vals.first() {
+                                    let addr = match entry.instr.opcode {
+                                        Opcode::LdrPost | Opcode::StrPost => *base,
+                                        _ => (*base as i32 + entry.instr.imm) as u32,
+                                    };
+                                    if !c.access(addr) {
+                                        entry.remaining_cycles += MISS_PENALTY;
+                                        stats.cache_misses += 1;
+                                    } else {
+                                        stats.cache_hits += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Update ROB state
                     for rob_e in rob.iter_mut() {
                         if rob_e.id == entry.rob_id {
@@ -389,8 +495,9 @@ pub fn run(
             next_rob_id += 1;
 
             let dest_regs = instr.destinations();
+            let dest_vregs = instr.vdestinations();
 
-            // Resolve source operands via RAT
+            // Resolve source operands via RAT (GP registers)
             let source_regs = instr.sources();
             let mut src_vals: Vec<Option<u32>> = Vec::new();
             let mut src_tags: Vec<Option<usize>> = Vec::new();
@@ -425,6 +532,35 @@ pub fn run(
                 }
             }
 
+            // Resolve vector register source dependencies via VRAT
+            // We use a dummy value (0) for "ready" vector sources since actual
+            // vector data flows through the register file, not the CDB scalar path.
+            let vsource_regs = instr.vsources();
+            for &vsrc in &vsource_regs {
+                if let Some(tag) = vrat.get(vsrc) {
+                    // Check if the ROB entry has already completed
+                    let mut completed = false;
+                    for rob_e in &rob {
+                        if rob_e.id == tag {
+                            if matches!(rob_e.state, RobState::Complete(_)) {
+                                completed = true;
+                            }
+                            break;
+                        }
+                    }
+                    if completed {
+                        src_vals.push(Some(0)); // dummy: data read at exec time
+                        src_tags.push(None);
+                    } else {
+                        src_vals.push(None);
+                        src_tags.push(Some(tag));
+                    }
+                } else {
+                    src_vals.push(Some(0)); // available in architectural vreg file
+                    src_tags.push(None);
+                }
+            }
+
             // Resolve CPSR dependency for conditional branches
             let (rs_cpsr_ready, rs_cpsr_tag, rs_cpsr_val) =
                 if instr.opcode.is_conditional_branch() {
@@ -453,9 +589,13 @@ pub fn run(
                     (true, None, None)
                 };
 
-            // Update RAT for destination registers
+            // Update RAT for GP destination registers
             for &d in &dest_regs {
                 rat.set(d, rob_id);
+            }
+            // Update VRAT for vector destination registers
+            for &vd in &dest_vregs {
+                vrat.set(vd, rob_id);
             }
             if instr.opcode.updates_flags() {
                 cpsr_tag = Some(rob_id);
@@ -467,6 +607,7 @@ pub fn run(
                 instr: instr.clone(),
                 state: RobState::Issued,
                 dest_regs,
+                dest_vregs,
             });
 
             // Allocate RS entry
@@ -523,6 +664,12 @@ pub fn run(
 
     if verbose {
         println!("{}", regs);
+    }
+
+    // Copy cache statistics into stats
+    if let Some(ref c) = cache {
+        stats.cache_hits = c.hits;
+        stats.cache_misses = c.misses;
     }
 
     stats

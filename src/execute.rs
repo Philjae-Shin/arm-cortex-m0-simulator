@@ -15,8 +15,10 @@ use crate::memory::Memory;
 /// Outcome of executing a single instruction.
 #[derive(Debug, Clone)]
 pub struct ExecResult {
-    /// Register writes: (register_index, new_value)
+    /// GP register writes: (register_index, new_value)
     pub reg_writes: Vec<(usize, u32)>,
+    /// Vector register writes: (vreg_index, element_data)
+    pub vreg_writes: Vec<(usize, Vec<u32>)>,
     /// Whether CPSR flags were updated (snapshot of new CPSR).
     pub new_cpsr: Option<u32>,
     /// If the instruction changes control flow, the new PC (instruction index).
@@ -35,6 +37,7 @@ impl ExecResult {
     fn empty() -> Self {
         ExecResult {
             reg_writes: Vec::new(),
+            vreg_writes: Vec::new(),
             new_cpsr: None,
             branch_target: None,
             branch_taken: false,
@@ -292,6 +295,27 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.did_mem_write = true;
         }
 
+        // Post-indexed load: Rd = Mem[Rn], then Rn = Rn + imm
+        Opcode::LdrPost => {
+            let base = rn_val();
+            let val = mem.read_word(base);
+            let rd = instr.rd.unwrap();
+            let rn = instr.rn.unwrap();
+            res.reg_writes.push((rd, val));
+            res.reg_writes.push((rn, base.wrapping_add(instr.imm as u32)));
+            res.did_mem_read = true;
+        }
+
+        // Post-indexed store: Mem[Rn] = Rm, then Rn = Rn + imm
+        Opcode::StrPost => {
+            let base = rn_val();
+            let data = rm_val();
+            mem.write_word(base, data);
+            let rn = instr.rn.unwrap();
+            res.reg_writes.push((rn, base.wrapping_add(instr.imm as u32)));
+            res.did_mem_write = true;
+        }
+
         // ---------------------------------------------------------------
         // Branches
         // ---------------------------------------------------------------
@@ -361,6 +385,95 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
         }
 
         // ---------------------------------------------------------------
+        // Vector (extension) — SIMD with separate vector register file
+        // ---------------------------------------------------------------
+
+        // VLDR: Vd[i] = Mem[Rn + i*4] for i in 0..len
+        Opcode::VLdr => {
+            let base = rn_val();
+            let len = instr.imm.max(0) as usize;
+            let vd = instr.vd.unwrap_or(0);
+            let mut data = Vec::with_capacity(len);
+            for i in 0..len {
+                data.push(mem.read_word(base + (i as u32) * 4));
+            }
+            res.vreg_writes.push((vd, data));
+            res.did_mem_read = true;
+        }
+
+        // VSTR: Mem[Rn + i*4] = Vs[i] for i in 0..len
+        Opcode::VStr => {
+            let base = rn_val();
+            let len = instr.imm.max(0) as usize;
+            let vs = instr.vd.unwrap_or(0);  // vd field holds source vreg for VSTR
+            for i in 0..len {
+                let val = regs.get_vreg_element(vs, i);
+                mem.write_word(base + (i as u32) * 4, val);
+            }
+            res.did_mem_write = true;
+        }
+
+        // VADD: Vd[i] = Vn[i] + Vm[i] for i in 0..len
+        Opcode::VAdd => {
+            let len = instr.imm.max(0) as usize;
+            let vn = instr.vn.unwrap_or(0);
+            let vm = instr.vm.unwrap_or(0);
+            let vd = instr.vd.unwrap_or(0);
+            let mut data = Vec::with_capacity(len);
+            for i in 0..len {
+                let a = regs.get_vreg_element(vn, i);
+                let b = regs.get_vreg_element(vm, i);
+                data.push(a.wrapping_add(b));
+            }
+            res.vreg_writes.push((vd, data));
+        }
+
+        // VSUB: Vd[i] = Vn[i] - Vm[i] for i in 0..len
+        Opcode::VSub => {
+            let len = instr.imm.max(0) as usize;
+            let vn = instr.vn.unwrap_or(0);
+            let vm = instr.vm.unwrap_or(0);
+            let vd = instr.vd.unwrap_or(0);
+            let mut data = Vec::with_capacity(len);
+            for i in 0..len {
+                let a = regs.get_vreg_element(vn, i);
+                let b = regs.get_vreg_element(vm, i);
+                data.push(a.wrapping_sub(b));
+            }
+            res.vreg_writes.push((vd, data));
+        }
+
+        // VMUL: Vd[i] = Vn[i] * Vm[i] for i in 0..len
+        Opcode::VMul => {
+            let len = instr.imm.max(0) as usize;
+            let vn = instr.vn.unwrap_or(0);
+            let vm = instr.vm.unwrap_or(0);
+            let vd = instr.vd.unwrap_or(0);
+            let mut data = Vec::with_capacity(len);
+            for i in 0..len {
+                let a = regs.get_vreg_element(vn, i);
+                let b = regs.get_vreg_element(vm, i);
+                data.push(a.wrapping_mul(b));
+            }
+            res.vreg_writes.push((vd, data));
+        }
+
+        // VDOT: Rd = sum(Vn[i] * Vm[i]) for i in 0..len  (scalar result)
+        Opcode::VDot => {
+            let len = instr.imm.max(0) as usize;
+            let vn = instr.vn.unwrap_or(0);
+            let vm = instr.vm.unwrap_or(0);
+            let mut acc: u32 = 0;
+            for i in 0..len {
+                let a = regs.get_vreg_element(vn, i);
+                let b = regs.get_vreg_element(vm, i);
+                acc = acc.wrapping_add(a.wrapping_mul(b));
+            }
+            let rd = instr.rd.unwrap();
+            res.reg_writes.push((rd, acc));
+        }
+
+        // ---------------------------------------------------------------
         // Special
         // ---------------------------------------------------------------
         Opcode::Nop => { /* nothing */ }
@@ -374,6 +487,9 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
 pub fn commit(result: &ExecResult, regs: &mut RegFile) {
     for &(r, val) in &result.reg_writes {
         regs.set(r, val);
+    }
+    for (v, data) in &result.vreg_writes {
+        regs.set_vreg_slice(*v, data);
     }
     if let Some(cpsr) = result.new_cpsr {
         regs.set_cpsr_raw(cpsr);
