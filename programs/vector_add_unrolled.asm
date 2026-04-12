@@ -21,20 +21,17 @@ loop_unrolled:
     BGE   done
 
     ; --- Element 0 ---
-    LDR   R5, [R0, #0]
-    LDR   R6, [R1, #0]
+    LDRPOST R5, R0, #4
+    LDRPOST R6, R1, #4
     ADD   R7, R5, R6
-    STR   R7, [R2, #0]
+    STRPOST R7, R2, #4
 
     ; --- Element 1 ---
-    LDR   R5, [R0, #4]
-    LDR   R6, [R1, #4]
+    LDRPOST R5, R0, #4
+    LDRPOST R6, R1, #4
     ADD   R7, R5, R6
-    STR   R7, [R2, #4]
+    STRPOST R7, R2, #4
 
-    ADDI  R0, R0, #8       ; advance pointers by 2 elements
-    ADDI  R1, R1, #8
-    ADDI  R2, R2, #8
     ADDI  R3, R3, #2       ; i += 2
 
     B     loop_unrolled

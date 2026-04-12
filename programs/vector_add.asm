@@ -1,6 +1,6 @@
 ; vector_add.asm — Vector Addition Benchmark
 ; Computes C[i] = A[i] + B[i] for i = 0..9
-; Tests: loop control, memory loads/stores, arithmetic
+; Tests: loop control, post-indexed memory access, arithmetic
 ;
 ; Memory layout:
 ;   0x1000: A[0..9]  (10 words)
@@ -32,15 +32,11 @@ loop:
     CMP   R3, R4            ; if i >= 10, exit
     BGE   done
 
-    LDR   R5, [R0, #0]     ; R5 = A[i]
-    LDR   R6, [R1, #0]     ; R6 = B[i]
+    LDRPOST R5, R0, #4      ; R5 = A[i]; R0 += 4
+    LDRPOST R6, R1, #4      ; R6 = B[i]; R1 += 4
     ADD   R7, R5, R6        ; R7 = A[i] + B[i]
-    STR   R7, [R2, #0]     ; C[i] = R7
-
-    ADDI  R0, R0, #4       ; advance A pointer
-    ADDI  R1, R1, #4       ; advance B pointer
-    ADDI  R2, R2, #4       ; advance C pointer
-    ADDI  R3, R3, #1       ; i++
+    STRPOST R7, R2, #4      ; C[i] = R7; R2 += 4
+    ADDI  R3, R3, #1        ; i++
 
     B     loop
 
