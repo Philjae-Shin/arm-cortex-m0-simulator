@@ -248,7 +248,7 @@ fn run_experiments(
     }
 
     println!("=== EXPERIMENT SUITE — ACA Processor Simulator ===\n");
-    println!("(4 experiments: ISA enhancement, cache extension, SIMD extension, compiler optimisation)\n");
+    println!("(3 experiments: ISA enhancement, cache extension, SIMD extension)\n");
 
     // Experiment 1: Post-indexed addressing impact
     println!("=== Experiment 1: Post-Indexed Addressing Impact ===\n");
@@ -397,32 +397,6 @@ fn run_experiments(
                 println!("{:<8} {:>10} {:>10} {:>10} {:>10} {:>9.2}x",
                     len, sl.cycles, sv.cycles,
                     sl.instructions_executed, sv.instructions_executed, speedup);
-            }
-        }
-    }
-
-    // Experiment 4: Loop unrolling × microarchitecture interaction
-    println!("\n=== Experiment 4: Loop Unrolling × Microarchitecture Interaction ===\n");
-    let va_path = asm_files.iter().find(|p| {
-        let stem = std::path::Path::new(p).file_stem()
-            .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        stem == "vector_add"
-    });
-    let va_unrolled = asm_files.iter().find(|p| p.contains("vector_add_unrolled"));
-
-    if let (Some(orig), Some(unrolled)) = (va_path, va_unrolled) {
-        println!("{:<25} {:>10} {:>10} {:>10}",
-            "Version", "Cycles", "IPC", "Branches");
-        println!("{}", "-".repeat(55));
-
-        for (label, path) in [("vector_add", orig.as_str()), ("vector_add_unrolled", unrolled.as_str())] {
-            for (sim_label, sim) in [("scalar", "scalar"), ("pipeline", "pipeline"), ("ooo-4", "ooo")] {
-                let units = if sim == "ooo" { 4 } else { 2 };
-                let s = run_fresh(path, sim, units, branch_pred::PredictorKind::TwoBit, false, verbose);
-                if let Some(stats) = s {
-                    println!("{:<15}/{:<9} {:>10} {:>10.4} {:>10}",
-                        label, sim_label, stats.cycles, stats.ipc(), stats.branches_total);
-                }
             }
         }
     }
