@@ -103,10 +103,7 @@ fn main() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Run a single program with one simulator
-// ---------------------------------------------------------------------------
-
+// Run a single program with one simulator (111111)
 fn run_single(
     path: &str,
     sim_mode: &str,
@@ -154,10 +151,7 @@ fn run_single(
     println!("{}", stats);
 }
 
-// ---------------------------------------------------------------------------
-// Run one program through all three simulators for comparison
-// ---------------------------------------------------------------------------
-
+// Run one program through all three simulators for comparison (222222)
 fn run_batch(
     path: &str,
     num_units: usize,
@@ -165,7 +159,7 @@ fn run_batch(
     forwarding: bool,
     verbose: bool,
 ) {
-    println!("=== Batch Comparison: {} ===\n", path);
+    println!("Batch Comparison: {}\n", path);
     println!("{:<14} {:>8} {:>8} {:>8} {:>10} {:>10}",
         "Simulator", "Cycles", "Instrs", "IPC", "Br.Pred%", "Stalls");
     println!("{}", "-".repeat(70));
@@ -220,16 +214,13 @@ fn run_batch(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Run full experiment suite
-// ---------------------------------------------------------------------------
-
+// Run full experiment suite (333333)
 fn run_experiments(
     _pred_kind: branch_pred::PredictorKind,
     verbose: bool,
 ) {
-    // Discover all .asm files in programs/ directory
-    let programs_dir = "programs";
+    // Discover all .asm files in /src/programs/ directory
+    let programs_dir = "src/programs";
     let asm_files: Vec<String> = match std::fs::read_dir(programs_dir) {
         Ok(entries) => entries
             .filter_map(|e| e.ok())
@@ -247,11 +238,11 @@ fn run_experiments(
         process::exit(1);
     }
 
-    println!("=== EXPERIMENT SUITE — ACA Processor Simulator ===\n");
+    println!(" All 3\n");
     println!("(3 experiments: ISA enhancement, cache extension, SIMD extension)\n");
 
     // Experiment 1: Post-indexed addressing impact
-    println!("=== Experiment 1: Post-Indexed Addressing Impact ===\n");
+    println!(" Experiment 1: Post-Indexed Addressing Impact \n");
     let va_post = asm_files.iter().find(|p| {
         let stem = std::path::Path::new(p).file_stem()
             .map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
@@ -287,7 +278,7 @@ fn run_experiments(
     }
 
     // Experiment 2: Cache locality analysis
-    println!("\n=== Experiment 2: Cache Locality & Conflict Miss Analysis (Cache Extension) ===\n");
+    println!("\n Experiment 2: Cache Locality & Conflict Miss Analysis (Cache Extension) \n");
     let cache_programs: Vec<&String> = asm_files.iter()
         .filter(|p| p.contains("cache_"))
         .collect();
@@ -320,10 +311,10 @@ fn run_experiments(
     }
 
     // Experiment 3: SIMD vector length scaling
-    println!("\n=== Experiment 3: SIMD Vector Length Scaling (SIMD Extension) ===\n");
+    println!("\n Experiment 3: SIMD Vector Length Scaling (SIMD Extension)\n");
     {
-        // Generate inline assembly for different vector lengths and compare
-        // SIMD (VADD) vs scalar loop at each length
+        // different vector lengths and compare
+        // SIMD (VADD) vs scalar loop part here (1111111)
         let lengths = [2u32, 4, 8, 16, 32];
         println!("{:<8} {:>10} {:>10} {:>10} {:>10} {:>10}",
             "VecLen", "Loop Cyc", "SIMD Cyc", "Loop Instr", "SIMD Instr", "Speedup");

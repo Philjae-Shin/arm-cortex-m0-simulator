@@ -47,7 +47,7 @@ impl Stats {
 
 impl fmt::Display for Stats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "=== Simulation Statistics ===")?;
+        writeln!(f, "Simulation Statistics")?;
         writeln!(f, "  Cycles executed       : {}", self.cycles)?;
         writeln!(f, "  Instructions executed  : {}", self.instructions_executed)?;
         writeln!(f, "  IPC                   : {:.4}", self.ipc())?;

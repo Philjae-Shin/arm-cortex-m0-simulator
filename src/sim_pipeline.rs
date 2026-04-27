@@ -1,6 +1,8 @@
-/// Stage 3-2 / 3-3: Pipelined processor simulator with multiple execution units.
+/// Stage 3-2 / 3-3: Pipelined processor simulator with multiple execution units
+/// 
+/// debug list: pub fn run_with_cache (com)
 ///
-/// Models a 5-stage pipeline: IF → ID → EX → MEM → WB.
+/// IF  ID  EX MEM  WB
 ///
 /// Features:
 ///   - Data hazard detection with pipeline stalling (and optional forwarding)
@@ -18,16 +20,13 @@ use crate::branch_pred::{BranchPredictor, PredictorKind};
 use crate::stats::Stats;
 use crate::cache::{Cache, MISS_PENALTY};
 
-// ---------------------------------------------------------------------------
 // Pipeline register between stages
-// ---------------------------------------------------------------------------
-
 #[derive(Clone)]
 struct PipeSlot {
     instr: Option<Instruction>,
     result: Option<ExecResult>,
     remaining_cycles: u32, // for multi-cycle execute
-    seq: u64,              // issue order (monotonically increasing) for in-order retirement
+    seq: u64,              // issue order (which number is is?)
 }
 
 impl PipeSlot {
@@ -85,16 +84,16 @@ pub fn run_with_cache(
     while !halted {
         stats.cycles += 1;
 
-        // Process stages in reverse order so that freed slots are available
-        // for downstream propagation within the same cycle.
+        // Start from back cus back has to be empty in order to start front
 
-        // ===== WB Stage: commit =====
+        // WB Stage first and then commit in reg (ADD r1, r2, r3) write r1 in reg
         if !wb_slot.is_empty() {
             if let Some(ref result) = wb_slot.result {
                 commit(result, regs);
                 stats.instructions_executed += 1;
 
                 if result.halt { halted = true; }
+                // Track stats update
                 if result.did_mem_read { stats.mem_reads += 1; }
                 if result.did_mem_write { stats.mem_writes += 1; }
             }
@@ -105,24 +104,22 @@ pub fn run_with_cache(
         }
         wb_slot.flush();
 
-        // MEM -> WB
+        // MEM to WB
         wb_slot = mem_slot.clone();
         mem_slot.flush();
 
-        // EX Stage: advance execution units, move completed to MEM
-        // Enforce in-order retirement: among all completed instructions,
-        // select the one with the smallest sequence number (oldest first).
-        // This prevents out-of-order completion from corrupting eff_regs
-        // when a newer instruction's wb_slot values overwrite an older one's.
         let mut completed_idx: Option<usize> = None;
         let mut completed_seq: u64 = u64::MAX;
         for (i, slot) in exec_slots.iter_mut().enumerate() {
             if slot.is_empty() { continue; }
             if slot.remaining_cycles > 1 {
+                // Still executing, just advance cycle count (ex)
+                // latency = 3
+                // among complete instruction, old one -> mem
                 slot.remaining_cycles -= 1;
                 continue;
             }
-            // This unit completes this cycle — candidate for MEM promotion
+            // ex unit after OoO, old instrection ->
             if mem_slot.is_empty() && slot.seq < completed_seq {
                 completed_idx = Some(i);
                 completed_seq = slot.seq;
@@ -133,15 +130,17 @@ pub fn run_with_cache(
             exec_slots[idx].flush();
         }
 
-        // Build effective register file
-        // Always include wb_slot values (models standard WB-write-first convention
-        // where register file write happens before read in the same cycle).
+        // tmp reg that copy current reg file
+        // ADD r1, r2, r3
+        // SUB r4, r1, r5
+        // SUB need r1, but real reg dont have r1 WB
         let mut eff_regs = regs.clone();
         if let Some(ref result) = wb_slot.result {
             for &(r, val) in &result.reg_writes { eff_regs.set(r, val); }
             for (v, data) in &result.vreg_writes { eff_regs.set_vreg_slice(*v, data); }
             if let Some(cpsr) = result.new_cpsr { eff_regs.set_cpsr_raw(cpsr); }
         }
+        // forward on: add eff.reg: not commit yet 
         if forwarding_enabled {
             // Forward from MEM stage
             if let Some(ref result) = mem_slot.result {

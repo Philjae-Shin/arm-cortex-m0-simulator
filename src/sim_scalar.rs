@@ -1,7 +1,9 @@
-/// Stage 3-1: Non-pipelined scalar processor simulator.
+/// Stage 3-1: Non-pipelined scalar processor sim 
 ///
-/// Each instruction goes through fetch → decode → execute sequentially
-/// before the next instruction begins.  No parallelism, no hazard issues.
+/// debug this let mut stats = Stats::new();
+/// 
+/// fetch decode execute
+/// before the next instruction 
 
 use crate::isa::Instruction;
 use crate::regs::RegFile;

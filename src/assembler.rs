@@ -143,10 +143,7 @@ pub fn assemble(source: &str, mem: &mut Memory) -> Result<Program, String> {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Pre-processing
-// ---------------------------------------------------------------------------
-
+// =====Pre-processing
 fn preprocess(source: &str) -> Vec<String> {
     source
         .lines()
@@ -161,10 +158,7 @@ fn preprocess(source: &str) -> Vec<String> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Instruction parsing
-// ---------------------------------------------------------------------------
-
+// ====Instruction parsing
 fn parse_instruction(
     text: &str,
     pc: usize,
@@ -424,10 +418,7 @@ fn parse_instruction(
     Ok(instr)
 }
 
-// ---------------------------------------------------------------------------
-// Token helpers
-// ---------------------------------------------------------------------------
-
+// === Token helpers
 /// Split an instruction line into tokens, stripping commas and brackets.
 fn tokenize(text: &str) -> Vec<String> {
     text.replace(',', " ")
@@ -546,10 +537,7 @@ fn parse_reg_list(ops: &[String]) -> Result<Vec<usize>, String> {
     Ok(regs)
 }
 
-// ---------------------------------------------------------------------------
-// Load assembly from file
-// ---------------------------------------------------------------------------
-
+// == Load assembly from file
 pub fn load_from_file(
     path: &str,
     mem: &mut Memory,
