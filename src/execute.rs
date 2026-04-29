@@ -8,10 +8,7 @@ use crate::isa::*;
 use crate::regs::RegFile;
 use crate::memory::Memory;
 
-// ---------------------------------------------------------------------------
-// Execution result
-// ---------------------------------------------------------------------------
-
+// == Execution result
 /// Outcome of executing a single instruction.
 #[derive(Debug, Clone)]
 pub struct ExecResult {
@@ -48,10 +45,7 @@ impl ExecResult {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Condition evaluation
-// ---------------------------------------------------------------------------
-
+// == Condition evaluation
 /// Evaluate a branch condition against the current CPSR flags.
 pub fn eval_condition(cond: Cond, regs: &RegFile) -> bool {
     match cond {
@@ -65,9 +59,7 @@ pub fn eval_condition(cond: Cond, regs: &RegFile) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Main execution function
-// ---------------------------------------------------------------------------
+// == Main execution function
 
 /// Execute `instr` using register values from `regs` and data `mem`.
 /// Returns an `ExecResult` describing all side-effects.
@@ -84,9 +76,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
     let rm_val = || instr.rm.map(|r| regs.get(r)).unwrap_or(0);
 
     match instr.opcode {
-        // ---------------------------------------------------------------
-        // Arithmetic
-        // ---------------------------------------------------------------
+        // == Arithmetic
         Opcode::Add => {
             let a = rn_val();
             let b = rm_val();
@@ -144,9 +134,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.new_cpsr = Some(tmp.cpsr_raw());
         }
 
-        // ---------------------------------------------------------------
-        // Compare
-        // ---------------------------------------------------------------
+        // == Compare
         Opcode::Cmp => {
             let a = rn_val();
             let b = rm_val();
@@ -165,9 +153,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.new_cpsr = Some(tmp.cpsr_raw());
         }
 
-        // ---------------------------------------------------------------
-        // Logical
-        // ---------------------------------------------------------------
+        // == Logical
         Opcode::And => {
             let result = rn_val() & rm_val();
             let rd = instr.rd.unwrap();
@@ -204,9 +190,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.new_cpsr = Some(tmp.cpsr_raw());
         }
 
-        // ---------------------------------------------------------------
-        // Shifts
-        // ---------------------------------------------------------------
+        // == Shifts
         Opcode::Lsl => {
             let val = rn_val();
             let shift = instr.imm as u32;
@@ -244,9 +228,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.new_cpsr = Some(tmp.cpsr_raw());
         }
 
-        // ---------------------------------------------------------------
-        // Data movement
-        // ---------------------------------------------------------------
+        // == Data movement
         Opcode::Mov => {
             let val = rn_val();
             let rd = instr.rd.unwrap();
@@ -258,9 +240,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.reg_writes.push((rd, instr.imm as u32));
         }
 
-        // ---------------------------------------------------------------
-        // Memory access
-        // ---------------------------------------------------------------
+        // == Memory access
         Opcode::Ldr => {
             let base = rn_val();
             let addr = (base as i32 + instr.imm) as u32;
@@ -316,9 +296,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.did_mem_write = true;
         }
 
-        // ---------------------------------------------------------------
-        // Branches
-        // ---------------------------------------------------------------
+        // == Branches
         Opcode::B => {
             let target = instr.imm as usize;
             res.branch_target = Some(target);
@@ -349,9 +327,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.branch_taken = true;
         }
 
-        // ---------------------------------------------------------------
-        // Stack operations
-        // ---------------------------------------------------------------
+        // == Stack operations
         Opcode::Push => {
             let mut sp = regs.get(SP);
             // Push registers in descending order (full descending stack)
@@ -384,9 +360,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             }
         }
 
-        // ---------------------------------------------------------------
-        // Vector (extension) — SIMD with separate vector register file
-        // ---------------------------------------------------------------
+        // == Vector (extension) — SIMD with separate vector register file
 
         // VLDR: Vd[i] = Mem[Rn + i*4] for i in 0..len
         Opcode::VLdr => {
@@ -473,9 +447,7 @@ pub fn exec(instr: &Instruction, regs: &RegFile, mem: &mut Memory) -> ExecResult
             res.reg_writes.push((rd, acc));
         }
 
-        // ---------------------------------------------------------------
-        // Special
-        // ---------------------------------------------------------------
+        // == Special
         Opcode::Nop => { /* nothing */ }
         Opcode::Halt => { res.halt = true; }
     }

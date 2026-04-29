@@ -3,12 +3,11 @@
 ///   2. **OneBit** — 1-bit saturating, flips on every misprediction
 ///   3. **TwoBit** — 2-bit saturating counter (the classic Smith predictor)
 
+// https://web.mit.edu/rust-lang_v1.25/arch/amd64_ubuntu1404/share/doc/rust/html/book/first-edition/documentation.html
+
 use std::collections::HashMap;
 
-// ---------------------------------------------------------------------------
-// Predictor selection
-// ---------------------------------------------------------------------------
-
+// ==Predictor selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PredictorKind {
     Static,   // always predict not-taken
@@ -35,10 +34,7 @@ impl PredictorKind {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Branch predictor
-// ---------------------------------------------------------------------------
-
+// == Branch predictor
 pub struct BranchPredictor {
     kind: PredictorKind,
     /// Per-PC state. For OneBit: 0 = not-taken, 1 = taken.

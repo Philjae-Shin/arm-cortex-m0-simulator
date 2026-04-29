@@ -1,5 +1,5 @@
 [package]
-name = "arm-cortex-m0-simulator"
+name = "Simulator"
 version = "0.1.0"
 authors = ["Henry Shin <bg22915@bristol.ac.uk>"]
 edition = "2021"

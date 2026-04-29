@@ -7,18 +7,14 @@
 use crate::isa::{NUM_REGS, NUM_VREGS, MAX_VEC_LEN, SP, PC, reg_name, vreg_name};
 use std::fmt;
 
-// ---------------------------------------------------------------------------
-// CPSR flag positions
-// ---------------------------------------------------------------------------
+// ==CPSR flag positions
 
 const FLAG_N: u32 = 1 << 31; // Negative
 const FLAG_Z: u32 = 1 << 30; // Zero
 const FLAG_C: u32 = 1 << 29; // Carry
 const FLAG_V: u32 = 1 << 28; // Overflow
 
-// ---------------------------------------------------------------------------
-// Register file (scalar GPRs + CPSR + vector registers)
-// ---------------------------------------------------------------------------
+// ==Register file (scalar GPRs + CPSR + vector registers)
 
 #[derive(Clone)]
 pub struct RegFile {
@@ -40,7 +36,7 @@ impl RegFile {
         rf
     }
 
-    // -- GPR access ---------------------------------------------------------
+    // == GPR access
 
     pub fn get(&self, r: usize) -> u32 {
         self.gpr[r]
@@ -54,14 +50,14 @@ impl RegFile {
         self.gpr[r] = val;
     }
 
-    // -- CPSR flag queries ---------------------------------------------------
+    // == CPSR flag queries
 
     pub fn flag_n(&self) -> bool { self.cpsr & FLAG_N != 0 }
     pub fn flag_z(&self) -> bool { self.cpsr & FLAG_Z != 0 }
     pub fn flag_c(&self) -> bool { self.cpsr & FLAG_C != 0 }
     pub fn flag_v(&self) -> bool { self.cpsr & FLAG_V != 0 }
 
-    // -- CPSR flag updates ---------------------------------------------------
+    // == CPSR flag updates
 
     /// Update N and Z flags from a result value.
     pub fn set_nz(&mut self, result: u32) {
@@ -124,7 +120,7 @@ impl RegFile {
     pub fn cpsr_raw(&self) -> u32 { self.cpsr }
     pub fn set_cpsr_raw(&mut self, v: u32) { self.cpsr = v; }
 
-    // -- Vector register access -----------------------------------------------
+    // == Vector register access
 
     /// Read a single element from a vector register.
     pub fn get_vreg_element(&self, v: usize, idx: usize) -> u32 {

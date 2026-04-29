@@ -5,8 +5,9 @@ Three simulation modes are supported:
   2. Pipeline    - In-order, 5-stage (IF-ID-EX-MEM-WB) with multiple EX units
   3. OoO         - Out-of-order with Tomasulo algorithm, ROB, and register renaming
 
-Prerequisites
+Prerequisites 
 -------------
+Important!!!
   - Rust toolchain (rustc + cargo), edition 2021 or later
     Install from: https://rustup.rs
 

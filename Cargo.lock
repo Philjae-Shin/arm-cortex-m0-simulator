@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "arm-cortex-m0-simulator"
+name = "Simulator"
 version = "0.1.0"
