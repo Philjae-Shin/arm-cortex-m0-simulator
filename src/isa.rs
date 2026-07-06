@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-// == Register identifiers
+// Register identifiers
 
 /// General-purpose and special registers (R0-R15).
 /// R13 = SP, R14 = LR, R15 = PC
@@ -38,7 +38,7 @@ pub fn vreg_name(v: usize) -> &'static str {
     }
 }
 
-// == Condition codes  (used by conditional branches)
+// Condition codes  (used by conditional branches)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cond {
     AL,  // Always (unconditional)
@@ -64,7 +64,7 @@ impl fmt::Display for Cond {
     }
 }
 
-// == Opcode enumeration
+// Opcode enumeration
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opcode {
@@ -245,7 +245,7 @@ impl fmt::Display for Opcode {
     }
 }
 
-// == Instruction representation
+// Instruction representation
 
 /// A fully decoded instruction ready for execution.
 #[derive(Debug, Clone)]

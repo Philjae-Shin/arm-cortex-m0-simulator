@@ -68,7 +68,7 @@ pub fn assemble(source: &str, mem: &mut Memory) -> Result<Program, String> {
             continue;
         }
 
-        // Text section — labels and instructions
+        // Text section - labels and instructions
         if let Some(colon_pos) = trimmed.find(':') {
             let lbl = trimmed[..colon_pos].trim().to_uppercase();
             labels.insert(lbl, instr_addr);
@@ -143,7 +143,7 @@ pub fn assemble(source: &str, mem: &mut Memory) -> Result<Program, String> {
     })
 }
 
-// =====Pre-processing
+// Pre-processing
 fn preprocess(source: &str) -> Vec<String> {
     source
         .lines()
@@ -158,7 +158,7 @@ fn preprocess(source: &str) -> Vec<String> {
         .collect()
 }
 
-// ====Instruction parsing
+// Instruction parsing
 fn parse_instruction(
     text: &str,
     pc: usize,
@@ -175,7 +175,7 @@ fn parse_instruction(
     instr.text = text.to_string();
 
     match mnemonic.as_str() {
-        //=== Arithmetic (3-register)
+        // Arithmetic (3-register)
         "ADD" => {
             instr.opcode = Opcode::Add;
             instr.rd = Some(parse_reg(ops.get(0).ok_or("ADD: missing Rd")?)?);
@@ -207,7 +207,7 @@ fn parse_instruction(
             instr.rm = Some(parse_reg(ops.get(2).ok_or("MUL: missing Rm")?)?);
         }
 
-        // == Compare
+        // Compare
         "CMP" => {
             instr.opcode = Opcode::Cmp;
             instr.rn = Some(parse_reg(ops.get(0).ok_or("CMP: missing Rn")?)?);
@@ -219,7 +219,7 @@ fn parse_instruction(
             instr.imm = parse_imm(ops.get(1).ok_or("CMPI: missing imm")?)?;
         }
 
-        // == Logical
+        // Logical
         "AND" => {
             instr.opcode = Opcode::And;
             instr.rd = Some(parse_reg(ops.get(0).ok_or("AND: missing Rd")?)?);
@@ -244,7 +244,7 @@ fn parse_instruction(
             instr.rn = Some(parse_reg(ops.get(1).ok_or("MVN: missing Rn")?)?);
         }
 
-        // == Shifts
+        // Shifts
         "LSL" => {
             instr.opcode = Opcode::Lsl;
             instr.rd = Some(parse_reg(ops.get(0).ok_or("LSL: missing Rd")?)?);
@@ -264,7 +264,7 @@ fn parse_instruction(
             instr.imm = parse_imm(ops.get(2).ok_or("ASR: missing imm")?)?;
         }
 
-        // == Data movement
+        // Data movement
         "MOV" => {
             instr.opcode = Opcode::Mov;
             instr.rd = Some(parse_reg(ops.get(0).ok_or("MOV: missing Rd")?)?);
@@ -276,7 +276,7 @@ fn parse_instruction(
             instr.imm = parse_imm(ops.get(1).ok_or("MOVI: missing imm")?)?;
         }
 
-        // == Memory access
+        // Memory access
         "LDR" => {
             instr.opcode = Opcode::Ldr;
             instr.rd = Some(parse_reg(ops.get(0).ok_or("LDR: missing Rd")?)?);
@@ -322,7 +322,7 @@ fn parse_instruction(
             instr.imm = offset;
         }
 
-        // == Post-indexed memory access
+        // Post-indexed memory access
         // Syntax: LDRPOST Rd, Rn, #offset  →  Rd = Mem[Rn]; Rn += offset
         "LDRPOST" => {
             instr.opcode = Opcode::LdrPost;
@@ -338,7 +338,7 @@ fn parse_instruction(
             instr.imm = parse_imm(ops.get(2).ok_or("STRPOST: missing offset")?)?;
         }
 
-        // == Branches
+        // Branches
         "B"   => { instr.opcode = Opcode::B;   instr.imm = resolve_branch(ops, pc, labels)?; }
         "BEQ" => { instr.opcode = Opcode::Beq; instr.imm = resolve_branch(ops, pc, labels)?; }
         "BNE" => { instr.opcode = Opcode::Bne; instr.imm = resolve_branch(ops, pc, labels)?; }
@@ -362,7 +362,7 @@ fn parse_instruction(
             instr.reg_list = parse_reg_list(ops)?;
         }
 
-        // == Vector (extension) — uses separate vector register file V0-V7
+        // Vector (extension) — uses separate vector register file V0-V7
         // VLDR Vd, Rn, #len — load len words from Mem[Rn..] into Vd
         "VLDR" => {
             instr.opcode = Opcode::VLdr;
@@ -408,7 +408,7 @@ fn parse_instruction(
             instr.imm = parse_imm(ops.get(3).ok_or("VDOT: missing #len")?)?;
         }
 
-        // == Special
+        // Special
         "NOP"  => { instr.opcode = Opcode::Nop; }
         "HALT" => { instr.opcode = Opcode::Halt; }
 
@@ -418,7 +418,7 @@ fn parse_instruction(
     Ok(instr)
 }
 
-// === Token helpers
+// Token helpers
 /// Split an instruction line into tokens, stripping commas and brackets.
 fn tokenize(text: &str) -> Vec<String> {
     text.replace(',', " ")
@@ -537,7 +537,7 @@ fn parse_reg_list(ops: &[String]) -> Result<Vec<usize>, String> {
     Ok(regs)
 }
 
-// == Load assembly from file
+// Load assembly from file
 pub fn load_from_file(
     path: &str,
     mem: &mut Memory,

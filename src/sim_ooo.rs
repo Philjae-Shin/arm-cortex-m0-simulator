@@ -21,9 +21,7 @@ use crate::stats::Stats;
 use crate::cache::{Cache, MISS_PENALTY};
 use std::collections::VecDeque;
 
-// ---------------------------------------------------------------------------
-// ROB entry
-// ---------------------------------------------------------------------------
+// == ROB entry
 
 #[derive(Clone, Debug)]
 enum RobState {
@@ -41,9 +39,7 @@ struct RobEntry {
     dest_vregs: Vec<usize>,  // architectural vector destination registers
 }
 
-// ---------------------------------------------------------------------------
-// Reservation station entry
-// ---------------------------------------------------------------------------
+// == Reservation station entry
 
 #[derive(Clone, Debug)]
 struct RSEntry {
@@ -68,9 +64,7 @@ impl RSEntry {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Register alias table (RAT) — maps arch regs to ROB tags for renaming
-// ---------------------------------------------------------------------------
+// == Register alias table (RAT) — maps arch regs to ROB tags for renaming
 
 struct RenameTable {
     /// mapping[arch_reg] = Some(rob_id) if renamed, None if value is in RegFile
@@ -107,9 +101,7 @@ impl RenameTable {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Vector register alias table (VRAT) — maps vector regs to ROB tags
-// ---------------------------------------------------------------------------
+// == Vector register alias table (VRAT) — maps vector regs to ROB tags
 
 struct VRenameTable {
     mapping: Vec<Option<usize>>,
@@ -145,9 +137,7 @@ impl VRenameTable {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Completed instruction descriptor (used to avoid double-mutable-borrow)
-// ---------------------------------------------------------------------------
+// == Completed instruction descriptor (used to avoid double-mutable-borrow)
 
 struct CompletedEntry {
     rs_idx: usize,
@@ -157,9 +147,7 @@ struct CompletedEntry {
     cpsr_val: Option<u32>,
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+// == Public API
 
 pub fn run(
     program: &[Instruction],

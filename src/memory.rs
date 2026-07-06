@@ -18,7 +18,7 @@ impl Memory {
         }
     }
 
-    // == byte access
+    // byte access
 
     pub fn read_byte(&self, addr: u32) -> u8 {
         let idx = addr as usize;
@@ -39,7 +39,7 @@ impl Memory {
         }
     }
 
-    // == word (32-bit, little-endian) access
+    // word (32-bit, little-endian) access
 
     pub fn read_word(&self, addr: u32) -> u32 {
         let idx = addr as usize;

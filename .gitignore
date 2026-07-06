@@ -25,4 +25,12 @@ past/
 .DS_Store
 
 aca feedback*.jpg
+
 interim_feedback.pdf
+
+docs_no_remove/
+
+slides.pptx
+
+# MS Office lock files
+~$*
